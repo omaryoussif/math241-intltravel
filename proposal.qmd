@@ -1,0 +1,44 @@
+---
+title: "Project 2"
+subtitle: "Proposal"
+authors: "Omar Youssif"
+format: html
+editor: visual
+---
+
+```{r load-packages, echo = FALSE, message = FALSE, warning = FALSE, comment = FALSE, results = FALSE}
+library(readr)
+library(dplyr)
+library(tidyverse)
+```
+
+# Proposal
+
+In this project, the goal is to create some interesting and interactive visualizations for analysis of international air travel in the United States.
+
+International Travel is incredibly large scale and has many dimensions that affect everything about it. I believe with the tools that we have learned from this class, there are better ways to analyze them and also visualize it to share results to others. My plan with this project is that I will find something remarkable or interesting from the dataset and I'll be able to visualize it in a creative manner.
+
+## Dataset
+
+```{r data loading, echo = FALSE, message = FALSE, warning = FALSE, comment = FALSE, results = FALSE}
+
+dotair2023 <- read_csv("data/us-dot-air-intl-2023.csv")
+```
+
+Below is monthly data about international air travel in all of the United States from 1990 to 2023:
+
+```{r, echo = FALSE}
+glimpse(dotair2023)
+```
+
+The data used for this project will have 766,693 rows and 16 columns and is sourced from the Department of Transportation. The dataset is incredibly useful and trustworthy as it comes straight from the governmnet. It also has two-directional flights where a flight from abroad to the US is also included, not just US to abroad.
+
+## Plan of Attack
+
+Week 11: Incorporate feedback from proposal. Start data anlaysis to find interesting things/trends to explore
+
+Week 12: Organize all findings into a presentable manner and format everything into graphs as well.
+
+Week 13: Present the project to the class.
+
+Week 14: Write the final write-up, while doing all the small work to organize the repo for the final submission.

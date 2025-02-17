@@ -1,0 +1,338 @@
+---
+title: "Analyzing International Air Travel in the U.S."
+subtitle: "Visualizing Big Data"
+author: "Omar Youssif"
+title-slide-attributes:
+  data-slide-number: none
+format: 
+  revealjs:
+    scrollable: true
+editor: visual
+execute:
+  echo: false
+---
+
+```{r}
+#| label: load-packages
+#| include: false
+
+library(readr)
+library(migest)
+library(circlize)
+library(countrycode)
+library(tidyverse)
+library(ggrepel)
+library(ggmap)
+library(dplyr)
+library(gganimate)
+library(ggplot2)
+library(RColorBrewer)
+library(maps)
+library(ggspatial)
+library(leaflet)
+library(osmdata)
+library(sf)
+library(ggthemes)
+library(shiny)
+library(gt)
+library(countrycode)
+library(quarto)
+library(knitr)
+```
+
+```{r}
+#| label: setup
+#| include: false
+
+# For better figure resolution
+knitr::opts_chunk$set(
+  fig.retina = 3, 
+  dpi = 300, 
+  fig.width = 6, 
+  fig.asp = 0.618, 
+  out.width = "70%"
+  )
+```
+
+```{r}
+#| label: load-data
+#| include: false
+# Loading in data and some wrangling for next visualizations
+
+us_dot_air_intl_2023 <- read_csv("data/us-dot-air-intl-2023.csv")
+
+airports <- read.csv("data/airports.dat")
+airlines <- read.csv("data/airlines.dat")
+countries <- read_csv("data/countries.dat", col_names = FALSE)
+
+colnames(airports) <- c("AirportID", "Name", "City", "Country", "IATA", "ICAO", "Latitude", "Longitude", "Altitude", "Timezone", "DST", "TimeRegion")
+
+colnames(countries) <- c("Name", "ISO_Code", "DAFIF_Code")
+
+colnames(airlines) <- c("OpenFlightsID", "Name", "Alias", "IATA", "ICAO", "Callsign", "Country", "Active")
+
+countries$region <- countrycode(sourcevar = countries$Name,
+                                   origin = "country.name",
+                                   destination = "region")
+countries <- countries %>% group_by(region) %>% drop_na()
+
+airports$region <- countrycode(sourcevar = airports$Country,
+                                   origin = "country.name",
+                                   destination = "region")
+
+airlines$region <- countrycode(sourcevar = airlines$Country,
+                                   origin = "country.name",
+                                   destination = "region")
+
+airports <- airports %>% drop_na(IATA)
+
+us_airports <- airports[grep("United States", airports$Country), ]
+
+intlTravel_2022 <- us_dot_air_intl_2023 %>% filter(Year == 2022 | Year == 2021)
+
+us_dot_air_intl_2023 <- us_dot_air_intl_2023 %>%
+  left_join(airports %>% 
+              select(IATA, us_long = Longitude, us_lat = Latitude), 
+            by = c("usg_apt" = "IATA")) %>%
+  left_join(airports %>% 
+              select(IATA, fg_long = Longitude, fg_lat = Latitude), 
+            by = c("fg_apt" = "IATA"))
+
+us_dot_air_intl_2023$us_long <- as.numeric(us_dot_air_intl_2023$us_long, na.rm = TRUE)
+us_dot_air_intl_2023$us_lat <- as.numeric(us_dot_air_intl_2023$us_lat, na.rm = TRUE)
+us_dot_air_intl_2023$fg_long <- as.numeric(us_dot_air_intl_2023$fg_long, na.rm = TRUE)
+us_dot_air_intl_2023$fg_lat <- as.numeric(us_dot_air_intl_2023$fg_lat, na.rm = TRUE)
+
+AirlineTable <- merge(us_dot_air_intl_2023, airlines[, c("IATA", "Country", "region", "Name")], 
+                     by.x = "carrier", by.y = "IATA") %>% na.omit()
+
+us_dot_air_intl_2023 <- merge(us_dot_air_intl_2023, airports[, c("IATA", "Country", "region")], 
+                     by.x = "fg_apt", by.y = "IATA", all.x = TRUE) 
+
+poproutes <- us_dot_air_intl_2023 %>%
+  group_by(Year, Month, usg_apt, fg_apt, us_long, us_lat, fg_long, fg_lat, Country, region) %>% 
+  summarize(count = sum(Total)) %>% 
+  arrange(Year, desc(count))
+
+poproutes <- poproutes %>% na.omit()
+
+poproutesPrev <- us_dot_air_intl_2023 %>% filter(Year == 2022) %>%
+  group_by(usg_apt, fg_apt, Country, Year, Month) %>% 
+  summarize(count = sum(Total)) %>% 
+  arrange(Year, desc(count))
+
+popair <- AirlineTable %>%
+  group_by(Year, Month, carrier, Name, usg_apt, fg_apt, us_long, us_lat, fg_long, fg_lat, Country, region) %>% 
+  summarize(count = sum(Total)) %>% 
+  arrange(Year, desc(count)) %>% na.omit()
+
+```
+
+## Introducing the Data {.smaller}
+
+###### From the U.S. DOT (U.S. Department of Tranportation): monthly international air travel data for all flight paths from 1990-2023
+
+-   Added OpenFlights data for Airlines and Airports:
+
+    -   766,693 x 22 monthly average per air pollutant (Flights)
+
+    -   6,161 x 9 airline data
+
+    -   7,697 x 15 airport data
+
+```{r, echo = FALSE}
+glimpse(us_dot_air_intl_2023)
+```
+
+## What are important routes for international travelers?
+
+Given the enormous amount of data, a simple glimpse such as the one below won't tell the whole story of the world's travelers.
+
+-   Alternative ways to visualize?
+
+```{r, echo = FALSE}
+glimpse(poproutesPrev)
+```
+
+## What are important routes for international travelers? {.smallest}
+
+![](images/Rplot.png)
+
+## More common way of visualizing flights
+
+```{r, echo = FALSE}
+# Animated Flight Map
+
+plot2 <- ggplot(show.legend = FALSE) +  borders("world", colour = "gray85", fill = "gray80") +
+  theme_map() + 
+  geom_curve(data = poproutes, aes(x = us_long, y = us_lat, xend = fg_long, yend = fg_lat, size = count), color = "green", alpha = 0.02, show.legend = FALSE) +
+  geom_point(data = poproutes, aes(x = us_long, y = us_lat), color = "black", size = 0.1, show.legend = FALSE) + 
+  geom_point(data = poproutes, aes(x = fg_long, y = fg_lat), color = "black", size = 0.1, show.legend = FALSE) + 
+  scale_size_continuous(range = c(0.1, 2)) +
+  labs(x = "Longitude", y = "Latitude", title = "Number of Passengers Flying With U.S. Airports", subtitle = "Year: {closest_state}") +
+  theme_void() + guides()
+
+plot2_animate <- plot2 + transition_states(Year, transition_length = 0, state_length = 1) +
+  coord_fixed()
+
+animate(plot2_animate,
+  fps = 1.5,
+  duration = 25   # Duration of animation (in seconds)
+)
+```
+
+## Further Comparison Through Interactivity: ShinyApp!
+
+```{r eval = F, echo = F}
+# Shiny App
+
+ui <- fluidPage(
+  titlePanel("U.S. International Travel Volume By Passenger Counts"),
+  sidebarLayout(
+    sidebarPanel(
+     selectizeInput(inputId = "selectedIATA",
+                     label = "Choose the IATA (3 letter) codes for airports you'd like to filter by!",
+                     choices = airports$IATA,
+                     multiple = TRUE,
+                     selected = NULL),
+      radioButtons(inputId = "filterType",
+                   label = "Choose how you'd like to filter!",
+                   choices = c("Include", "Exclude"),
+                   selected = "Include"),
+      selectInput("year", "Select Year:", choices = 1990:2022),
+      selectInput("month", "Select Month:", choices = month.name, selected = NULL),
+    ),
+      submitButton("Update Results!")
+      
+    ),
+        mainPanel(
+      plotOutput(outputId = "graph"),
+      dataTableOutput(outputId = "table")
+      
+    )
+  )
+
+server <- function(input, output, session) {
+  
+  updateSelectizeInput(session, 'selectedIATA', 
+                       choices = unique(airports$IATA), 
+                       server = TRUE)
+  
+  poproutes2 <- reactive({
+    filtered_routes <- poproutes %>%
+      filter(Year == input$year)
+    if (!is.null(input$selectedIATA) && length(input$selectedIATA) > 0) {
+      if (input$filterType == "Include") {
+        filtered_routes <- filtered_routes %>%
+          filter(usg_apt %in% input$selectedIATA | fg_apt %in% input$selectedIATA)
+      } else {
+        filtered_routes <- filtered_routes %>%
+          filter(!(usg_apt %in% input$selectedIATA | fg_apt %in% input$selectedIATA))
+      }
+    }
+    filtered_routes
+  }) 
+  
+  output$graph <- renderPlot({
+    routes_data <- poproutes2()
+    ggplot() +  
+      borders("world", colour = "gray85", fill = "gray80") +
+      theme_map() + 
+      geom_curve(data = routes_data, aes(x = us_long, y = us_lat, xend = fg_long, yend = fg_lat, size = count), color = "green", alpha = 0.02) +
+      geom_point(data = routes_data, aes(x = us_long, y = us_lat), color = "black", size = 1) + 
+      geom_point(data = routes_data, aes(x = fg_long, y = fg_lat), color = "black", size = 1) + 
+      scale_size_continuous(name = "Number of Passengers", range = c(0.5, 5)) + guides(size = guide_legend(override.aes = list(alpha = 0.5, size = 1))) +
+      labs(x = "Longitude", y = "Latitude", title = "Number of Passengers Flying With U.S. Airports", subtitle = paste("Year:", input$year))
+  })
+}
+
+```
+
+## Checking in on airlines' origin countries {.scrollable}
+
+```{r echo = F}
+# U.S. Foreign Airline Graph
+
+highlight_events <- data.frame(
+  event = c("9/11", "2008 Recession", "COVID-19"),
+  start_year = c(2001, 2008, 2020),
+  end_year = c(2002, 2009, 2022),
+  Year = c(2001, 2008, 2020)
+)
+
+airlineOrigin <- us_dot_air_intl_2023 %>%
+  group_by(Year) %>%
+  summarize(percentage = mean(!carriergroup) * 100,
+            total = sum(Total))
+
+ggplot() +
+  geom_line(data = airlineOrigin, aes(x = Year, y = percentage, color = total)) +
+  geom_point(data = airlineOrigin, aes(x = Year, y = percentage, color = total)) +
+  labs(x = "Year",
+    y = "Percentage of Flights",
+    color = "Passenger Counts",
+    title = "Percentage of Non-U.S. Airline Flights Over Time",
+    subtitle = "Data sourced from U.S. Dept. Of Transportation from 1990-2023") +
+    geom_rect(data = highlight_events, aes(xmin = start_year, xmax=end_year, ymin=-Inf, ymax = Inf, fill = "gray", alpha = 0.2)) + 
+  geom_text_repel(
+    data = highlight_events,
+    aes(x = start_year + (end_year - start_year) / 2, y = 50, label = event),
+    segment.size = 0.5,
+    nudge_x = 3,
+    nudge_y = 1.5,
+    size = 3) +
+  scale_color_continuous(labels = scales::comma) +
+  scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+  guides(fill = "none", alpha = "none")
+```
+
+```{r echo = F}
+# AIRLINE TABLE
+popair %>%
+  filter(Year == 2022) %>%
+  filter(!is.na(Name) & !is.na(region)) %>%
+  group_by(region, Name, Country) %>%
+  summarize(passenger_count = sum(count, na.rm = TRUE)) %>%
+  ungroup() %>%
+  group_by(region) %>%
+  arrange(desc(passenger_count)) %>%
+  slice_head(n = 15) %>%
+  mutate(code2 = countrycode(sourcevar = Country, origin = "country.name", destination = "iso2c")) %>%
+  
+  # Create the gt table
+  gt() %>%
+  
+  # Move code2 column to the start
+  cols_move_to_start(columns = code2) %>%
+  
+  # Format passenger_count as integer
+  fmt_integer(columns = passenger_count) %>%
+  
+  # Add flag icons for regions
+  fmt_flag(columns = code2) %>%
+  
+  # Set row padding
+  tab_options(data_row.padding = px(5)) %>%
+  
+  # Set column labels
+  cols_label(
+    code2 = "",
+    region = "Region",
+    Name = "Airline",
+    passenger_count = "Passenger Count"
+  )
+```
+
+## Limitations & Next Steps
+
+-   Difficult to make conclusions about regions that are physically distant (South Asia, Central Asia, Oceania, Sub-Saharan Africa, etc.)
+
+    -   Expand data to outside of United States?
+
+-   In-depth analysis could be done on JFK and LAX as they seemingly are the most significant airports in the United States
+
+    -   Could use shiny app to visualize differences through exclusion filtering
+
+-   Predictive Modeling could be done given the large data (routes? passenger counts?)
+
+# Thank you!

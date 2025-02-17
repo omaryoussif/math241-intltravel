@@ -1,0 +1,7 @@
+---
+title: "Examining International Air Travel Within the United States"
+format: html
+editor: visual
+---
+
+This project was developed by Omar Youssif. For [MATH/STAT241](https://aallorant.github.io/math241s24/) at Reed College. The data is sourced from the U.S. Department of Transportation (**data** **owner: Randall Keizer at randall.keizer\@dot.gov**) and is accessible through [this link](https://data.transportation.gov/Aviation/International_Report_Passengers/xgub-n9bw/about_data).
